@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <collection>
+        <url_prefix><![CDATA[https://www.kyobobook.co.kr/product/detailViewKor.laf?mallGb=KOR&orderClick=4bb&ejkGb=KOR&barcode=]]></url_prefix>
+        <element_list>
+            <element_class>content_middle</element_class>
+        </element_list>
+        <encoding>cp949</encoding>
+    </collection>
+</configuration>
