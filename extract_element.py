@@ -9,6 +9,7 @@ import logging
 import logging.config
 from bs4 import BeautifulSoup
 from util import Config, IO, HTMLExtractor
+from pprint import pprint
 
 
 logging.config.fileConfig("logging.conf")
@@ -32,13 +33,11 @@ def extract_element(html: str) -> int:
         logger.error("can't get collection configuration")
         sys.exit(-1)
 
-    id_list = collection_conf["element_id_list"]
-    class_list = collection_conf["element_class_list"]
-    path_list = collection_conf["element_path_list"]
+    #id_list = collection_conf["element_id_list"]
+    #class_list = collection_conf["element_class_list"]
+    #path_list = collection_conf["element_path_list"]
+    element_list = collection_conf["element_list"][0]
     encoding = collection_conf["encoding"]
-    logger.debug("# element_id: %r" % id_list)
-    logger.debug("# element_class: %r" % class_list)
-    logger.debug("# element_path: %r" % path_list)
     logger.debug("# encoding: %r" % encoding)
 
     # sanitize
@@ -47,31 +46,28 @@ def extract_element(html: str) -> int:
     html = re.sub(r'[\x01\x08]', '', html, re.LOCALE)
     html = re.sub(r'<\?xml[^>]+>', r'', html)
 
-    if not id_list and not class_list and not path_list:
-        result_content = html
-
-    for parser in ["html.parser", "html5lib", "lxml"]:
+    for parser in ["html.parser"]:
         soup = BeautifulSoup(html, parser)
         if not soup:
             logger.error("can't parse HTML")
             sys.exit(-1)
 
-        for id_str in id_list:
-            divs = soup.find_all(attrs={"id": id_str})
-            if divs:
-                for div in divs:
-                    result_content = result_content + str(div)
+        for element_spec in element_list:
+            if element_spec == "element_path":
+                path_str = element_list[element_spec]
+                divs = HTMLExtractor.get_node_with_path(soup, path_str)
+            elif element_spec == "element_class":
+                class_str = element_list[element_spec]
+                divs = soup.find_all(class_=class_str)
+            elif element_spec == "element_id":
+                id_str = element_list[element_spec]
+                divs = soup.find_all(attrs={"id": id_str})
+            else:
+                raise RuntimeError("unknown configuration '%s'" % element_spec)
 
-        for class_str in class_list:
-            divs = soup.find_all(class_=class_str)
             if divs:
                 for div in divs:
-                    result_content = result_content + str(div)
-
-        for path_str in path_list:
-            divs = HTMLExtractor.get_node_with_path(soup, path_str)
-            if divs:
-                for div in divs:
+                    #logger.debug("div=%s" % str(div))
                     result_content = result_content + str(div)
 
     return result_content

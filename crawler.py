@@ -53,7 +53,8 @@ class Crawler():
         if not response:
             logger.warning("can't get response from '%s'" % url)
             sys.exit(-1)
-           
+
+
         return response
 
 

@@ -11,6 +11,7 @@ import xmltodict
 from datetime import datetime
 from typing import List, Any, Dict, Tuple, Optional, Set
 from ordered_set import OrderedSet
+from pprint import pprint
 
 
 logging.config.fileConfig("logging.conf")
@@ -135,9 +136,13 @@ class HTMLExtractor:
         pattern = re.compile(r"""
         (
           (?P<name>\w+)
-          (?:\[
+          (?:
+          \[
             (?P<idx>\d+)
-          \])?
+          \]
+          |
+          (?P<is_function>\(\))
+          )?
         |
           \*\[@id=\"(?P<id>\w+)\"\]
         )
@@ -146,75 +151,97 @@ class HTMLExtractor:
         if m:
             name = m.group("name")
             idx = int(m.group("idx")) if m.group("idx") else None
+            is_function = True if m.group("is_function") else False
             id_str = m.group("id")
         else:
             return None, None, None, None, False
 
         # id, name, idx, path의 나머지 부분, is_anywhere을 반환
-        return id_str, name, idx, "/".join(tokens[i:]), is_anywhere
+        return id_str, name, idx, is_function, "/".join(tokens[i:]), is_anywhere
+
+    @staticmethod
+    def print_element(num, element):
+        print("%d" % num, end="")
+        if hasattr(element, "name"):
+            print(" %s" % element.name, end="")
+        if "id" in element:
+            print(" id=''" % element["id"], end="")
+        if "class" in element:
+            print(" id=''" % element["class"], end="")
+        print()
 
     @staticmethod
     def get_node_with_path(node, path_str: str) -> Optional[List[Any]]:
         if not node:
             return None
-        # print "\n# get_node_with_path(node='%s', path_str='%s')" % (node.name, path_str)
+        print("\n# get_node_with_path(node='%s', path_str='%s')" % (node.name, path_str))
         node_list = []
 
-        (node_id, name, idx, next_path_str, is_anywhere) = HTMLExtractor.get_first_token_from_path(path_str)
-        # print "node_id='%s', name='%s', idx=%d, next_path_str='%s', is_anywhere=%s" % (node_id, name, idx, next_path_str, is_anywhere)
+        (node_id, name, idx, is_function, next_path_str, is_anywhere) = HTMLExtractor.get_first_token_from_path(path_str)
+        print("node_id='%s', name='%s', idx=%d, is_function=%r, next_path_str='%s', is_anywhere=%s" % (node_id, name, idx if idx else -1, is_function, next_path_str, is_anywhere))
 
         if node_id:
-            # print "searching with id"
+            print("searching with id")
             # 특정 id로 노드를 찾아서 현재 노드에 대입
             nodes = node.find_all(attrs={"id": node_id})
-            # print "nodes=", nodes
+            #print("nodes=", nodes)
             if not nodes or nodes == []:
-                # print("error, no id matched")
+                print("error, no id matched")
                 return None
             if len(nodes) > 1:
-                # print("error, two or more id matched")
+                print("error, two or more id matched")
                 return None
-            # print "found! node=%s" % nodes[0].name
+            print("found! node=%s" % nodes[0].name)
             node_list.append(nodes[0])
             result_node_list = HTMLExtractor.get_node_with_path(nodes[0], next_path_str)
             if result_node_list:
                 node_list = result_node_list
         else:
-            # print "searching with name and index"
+            print("searching with name and index")
             if not name:
                 return None
 
-            # print "#children=%d" % len(node.contents)
-            i = 1
-            for child in node.contents:
-                if hasattr(child, 'name'):
-                    # print "i=%d child='%s', idx=%s" % (i, child.name, idx)
-                    # 이름이 일치하거나 //로 시작한 경우
-                    if child.name == name:
-                        # print "name matched! i=%d child='%s', idx=%d" % (i, child.name, idx)
-                        if not idx or i == idx:
-                            # 인덱스가 지정되지 않았거나, 지정되었고 인덱스가 일치할 때
-                            if next_path_str == "":
-                                # 단말 노드이면 현재 일치한 노드를 반환
-                                # print "*** append! child='%s'" % child.name
-                                node_list.append(child)
-                            else:
-                                # 중간 노드이면 recursion
-                                # print "*** recursion ***"
-                                result_node_list = HTMLExtractor.get_node_with_path(child, next_path_str)
-                                # print "\n*** extend! #result_node_list=", len(result_node_list)
-                                if result_node_list:
-                                    node_list.extend(result_node_list)
-                        if idx and i == idx:
-                            break
-                        # 이름이 일치했을 때만 i를 증가시킴
-                        i = i + 1
-                    if is_anywhere:
-                        # print "can be anywhere"
-                        result_node_list = HTMLExtractor.get_node_with_path(child, name)
-                        if result_node_list:
-                            node_list.extend(result_node_list)
-                        # print "node_list=", node_list
+            # 기본 함수
+            if is_function and name == "text":
+                print("function")
+                node_list.append(node.text)
+            else:
+                print("#children=%d" % len(node.contents))
+                i = 1
+                for child in node.contents:
+                    HTMLExtractor.print_element(i, child)
+                    if hasattr(child, 'name'):
+                        if child.name == None:
+                            continue
+                        # 이름이 일치하거나 //로 시작한 경우
+                        elif child.name == name:
+                            print("name matched! i=%d child.name='%s', type(child)=%s <--> name='%s', idx=%d" % (i, child.name, type(child), name, idx if idx else -1))
+                            if not idx or i == idx:
+                                # 인덱스가 지정되지 않았거나, 지정되었고 인덱스가 일치할 때
+                                if next_path_str == "":
+                                    # 단말 노드이면 현재 일치한 노드를 반환
+                                    print("*** append! child='%s'" % child.name)
+                                    #logging.debug(child)
+                                    node_list.append(child)
+                                else:
+                                    # 중간 노드이면 recursion
+                                    print("*** recursion ***")
+                                    result_node_list = HTMLExtractor.get_node_with_path(child, next_path_str)
+                                    print("\n*** extend! #result_node_list=", len(result_node_list))
+                                    if result_node_list:
+                                        #logging.debug(result_node_list)
+                                        node_list.extend(result_node_list)
+                            if idx and i == idx:
+                                break
+                            # 이름이 일치했을 때만 i를 증가시킴
+                            i = i + 1
+                        if is_anywhere:
+                            print("can be anywhere")
+                            result_node_list = HTMLExtractor.get_node_with_path(child, name)
+                            if result_node_list:
+                                node_list.extend(result_node_list)
+                            #print("node_list=", node_list)
+
         return node_list
 
 
@@ -310,6 +337,7 @@ class Config:
             encoding = self._get_str_config_value(collection_conf, "encoding", "utf-8")
 
             list_url_list = self._get_config_value_list(collection_conf, "list_url", [])
+            element_list = self._get_config_value_list(collection_conf, "element_list", [])
             element_id_list = self._get_config_value_list(collection_conf, "element_id", [])
             element_class_list = self._get_config_value_list(collection_conf, "element_class", [])
             element_path_list = self._get_config_value_list(collection_conf, "element_path", [])
@@ -318,6 +346,7 @@ class Config:
                 "user_agent": user_agent,
                 "encoding": encoding,
                 "list_url_list": list_url_list,
+                "element_list": element_list,
                 "element_id_list": element_id_list,
                 "element_class_list": element_class_list,
                 "element_path_list": element_path_list,
@@ -400,32 +429,3 @@ class URL:
         return hashlib.md5(content.encode()).hexdigest()[:7]
 
 
-class Cache:
-    @staticmethod
-    def get_cache_info_common(prefix: str, img_url: str, img_ext: str, postfix=None, index=None) -> str:
-        logger.debug("# get_cache_info_common(%s, %s, %s, %s, %d)" % (prefix, img_url[:30], img_ext, postfix if postfix else "None", index if index else -1))
-        postfix_str = ""
-        if postfix and postfix != "":
-            postfix_str = "_" + str(postfix)
-
-        index_str = ""
-        if index and index != "":
-            index_str = "." + str(index)
-
-        if re.search(r'https?://', img_url) and img_ext:
-            result_str = prefix + "/" + URL.get_short_md5_name(img_url) + postfix_str + index_str + "." + img_ext
-            logger.debug("%s + %s + %s + '.' + %s -> %s" % (prefix, URL.get_short_md5_name(img_url), postfix_str, index_str, result_str))
-        else:
-            result_str = prefix + "/" + URL.get_short_md5_name(img_url)
-            logger.debug("%s -> %s" % (img_url[:30], result_str))
-        return result_str
-
-    @staticmethod
-    def get_cache_url(url_prefix: str, img_url: str, img_ext: str, postfix=None, index=None) -> str:
-        logger.debug("# get_cache_url(%s, %s, %s, %s, %d)" % (url_prefix, img_url[:30], img_ext, postfix if postfix else "None", index if index else -1))
-        return Cache.get_cache_info_common(url_prefix, img_url, img_ext, postfix, index)
-
-    @staticmethod
-    def get_cache_file_name(path_prefix: str, img_url: str, img_ext: str, postfix=None, index=None):
-        logger.debug("# get_cache_file_name(%s, %s, %s, %s, %d)" % (path_prefix, img_url[:30], img_ext, postfix if postfix else "None", index if index else -1))
-        return Cache.get_cache_info_common(path_prefix, img_url, img_ext, postfix, index)
